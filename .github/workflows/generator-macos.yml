@@ -663,6 +663,15 @@ jobs:
               find "${{ inputs.appname }}.app/Contents/Frameworks" -type f -not -name ".*" -exec \
                 rcodesign sign --p12-file certificate.p12 --p12-password "${{ secrets.MACOS_P12_PASSWORD }}" \
                 --code-signature-flags runtime {} \;
+
+              # RustDesk places a helper executable named "service" in Contents/MacOS.
+              # Sign it before the outer app bundle so it is included in the final seal.
+              SERVICE_EXECUTABLE="${{ inputs.appname }}.app/Contents/MacOS/service"
+              if [ -f "$SERVICE_EXECUTABLE" ]; then
+                echo "Signing service helper..."
+                rcodesign sign --p12-file certificate.p12 --p12-password "${{ secrets.MACOS_P12_PASSWORD }}" \
+                  --code-signature-flags runtime "$SERVICE_EXECUTABLE"
+              fi
               
               echo "Signing main bundle..."
               rcodesign sign --p12-file certificate.p12 --p12-password "${{ secrets.MACOS_P12_PASSWORD }}" \
@@ -674,6 +683,15 @@ jobs:
             
             # Clean up
             rm certificate.p12 
+
+      - name: Verify macOS app signature before DMG
+        shell: bash
+        run: |
+          cd flutter/build/macos/Build/Products/Release
+          TARGET_APP="${{ inputs.appname }}.app"
+          echo "Contents/MacOS before DMG:"
+          ls -la "$TARGET_APP/Contents/MacOS"
+          codesign --verify --deep --strict --verbose=4 "$TARGET_APP"
 
       - name: Create DMG
         run: |
